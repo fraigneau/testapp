@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.testapp.data.DataStoreProvider
 import com.example.testapp.data.DatabaseProvider
+import com.example.testapp.music.NowPlaying
 import com.example.testapp.spotify.AuthManager
 import com.example.testapp.spotify.TokenStore
 import com.example.testapp.ui.Menu
@@ -96,6 +97,19 @@ class MainActivity : ComponentActivity() {
                         onSpotifyLogin = { musicVm.login() },
                         onSpotifyRefresh = { musicVm.refreshNow() }
                     )
+                    LaunchedEffect(musicUi.track) {
+                        val np = musicUi.track?.let {
+                            NowPlaying(
+                                title = it.title,
+                                artist = it.artist,
+                                imageUrl = it.coverUrl,
+                                isPlaying = true
+                            )
+                        }
+                        updateNowPlayingNotif(this@MainActivity, np)
+                    }
+
+
                 } else {
                     PermissionRequestScreen(multiplePermissionsState)
                 }
@@ -122,6 +136,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        //stopMyService(this)
         super.onStop()
     }
 
@@ -133,6 +148,17 @@ class MainActivity : ComponentActivity() {
             context.startService(Intent(context, MyForegroundService::class.java))
         }
     }
+
+    fun updateNowPlayingNotif(context: Context, np: NowPlaying?) {
+        val i = Intent(context, MyForegroundService::class.java).apply {
+            action = MyForegroundService.ACTION_UPDATE
+            putExtra(MyForegroundService.EXTRA_TITLE, np?.title ?: "")
+            putExtra(MyForegroundService.EXTRA_ARTIST, np?.artist ?: "")
+            putExtra(MyForegroundService.EXTRA_IMAGE_URL, np?.imageUrl ?: "")
+        }
+        context.startService(i)
+    }
+
 
     fun stopMyService(context: Context) {
         context.stopService(Intent(context, MyForegroundService::class.java))
