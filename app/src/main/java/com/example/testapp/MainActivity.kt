@@ -1,7 +1,10 @@
 package com.example.testapp
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -41,6 +44,8 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        startMyService(this) // pour call la notification
 
         dataStoreProvider = DataStoreProvider(this)
 
@@ -103,6 +108,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         musicVm.onOAuthRedirect(intent)
         setIntent(Intent(this, javaClass))
+
     }
 
     override fun onStart() {
@@ -118,5 +124,19 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
     }
+
+    fun startMyService(context: Context) {
+        val i = Intent(context, MyForegroundService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(Intent(context, MyForegroundService::class.java))
+        } else {
+            context.startService(Intent(context, MyForegroundService::class.java))
+        }
+    }
+
+    fun stopMyService(context: Context) {
+        context.stopService(Intent(context, MyForegroundService::class.java))
+    }
+
 
 }
