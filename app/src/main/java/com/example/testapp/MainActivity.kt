@@ -82,7 +82,6 @@ class MainActivity : ComponentActivity() {
                 if (multiplePermissionsState.allPermissionsGranted) {
 
                     val musicUi = musicVm.uiState.collectAsStateWithLifecycle().value
-
                     LaunchedEffect(Unit) { musicVm.startAutoRefresh(1000) }
 
                     Menu(
@@ -97,19 +96,6 @@ class MainActivity : ComponentActivity() {
                         onSpotifyLogin = { musicVm.login() },
                         onSpotifyRefresh = { musicVm.refreshNow() }
                     )
-                    LaunchedEffect(musicUi.track) {
-                        val np = musicUi.track?.let {
-                            NowPlaying(
-                                title = it.title,
-                                artist = it.artist,
-                                imageUrl = it.coverUrl,
-                                isPlaying = true
-                            )
-                        }
-                        updateNowPlayingNotif(this@MainActivity, np)
-                    }
-
-
                 } else {
                     PermissionRequestScreen(multiplePermissionsState)
                 }
@@ -142,23 +128,8 @@ class MainActivity : ComponentActivity() {
 
     fun startMyService(context: Context) {
         val i = Intent(context, MyForegroundService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(Intent(context, MyForegroundService::class.java))
-        } else {
-            context.startService(Intent(context, MyForegroundService::class.java))
-        }
+        context.startForegroundService(i)
     }
-
-    fun updateNowPlayingNotif(context: Context, np: NowPlaying?) {
-        val i = Intent(context, MyForegroundService::class.java).apply {
-            action = MyForegroundService.ACTION_UPDATE
-            putExtra(MyForegroundService.EXTRA_TITLE, np?.title ?: "")
-            putExtra(MyForegroundService.EXTRA_ARTIST, np?.artist ?: "")
-            putExtra(MyForegroundService.EXTRA_IMAGE_URL, np?.imageUrl ?: "")
-        }
-        context.startService(i)
-    }
-
 
     fun stopMyService(context: Context) {
         context.stopService(Intent(context, MyForegroundService::class.java))
