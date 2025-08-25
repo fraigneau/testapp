@@ -129,7 +129,7 @@ class MyForegroundService : Service() {
             .setContentTitle(contentTitle)
             .setContentText("Spotify")
             .setContentIntent(contentPI)
-            .setLargeIcon(largeIcon) // pochette de l'album
+            .setLargeIcon(largeIcon)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(0, "Stop", stopPI)
