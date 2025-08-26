@@ -4,5 +4,6 @@ data class NowPlaying(
     val title: String?,
     val artist: String?,
     val imageUrl: String?,
-    val isPlaying: Boolean
+    val isPlaying: Boolean,
+    val progressMs: Long?
 )

@@ -7,6 +7,7 @@ import retrofit2.http.Header
 data class CurrentlyPlayingItem(
     @Json(name = "item") val item: Track?,
     @Json(name = "is_playing") val isPlaying: Boolean?,
+    @Json(name = "progress_ms") val progressMs: Long?
 )
 data class Track(
     @Json(name = "name") val name: String?,

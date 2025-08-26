@@ -97,7 +97,8 @@ class SpotifyProvider(
                         title = tr?.name,
                         artist = tr?.artists?.joinToString { it.name.orEmpty() },
                         imageUrl = tr?.album?.images?.firstOrNull()?.url,
-                        isPlaying = body?.isPlaying == true
+                        isPlaying = body?.isPlaying == true,
+                        progressMs = body?.progressMs
                     )
                 )
             } catch (e: Exception) {
