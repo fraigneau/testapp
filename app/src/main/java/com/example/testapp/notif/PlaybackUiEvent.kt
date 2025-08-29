@@ -6,7 +6,8 @@ sealed class PlaybackUiEvent {
         val title: String,
         val artist: String,
         val album: String,
-        val isPlaying: Boolean
+        val isPlaying: Boolean,
+        val artwork: Artwork
     ) : PlaybackUiEvent()
     data class Stopped(val packageName: String) : PlaybackUiEvent()
 }

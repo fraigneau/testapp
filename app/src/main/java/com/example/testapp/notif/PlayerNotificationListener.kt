@@ -43,7 +43,6 @@ class PlayerNotificationListener: NotificationListenerService() {
     }
 
     private fun handlePosted(sbn: StatusBarNotification, rankingMap: RankingMap?) {
-
         val pkg = sbn.packageName ?: return
         if (!INTERESTING_PACKAGES.contains(pkg)) return
 
@@ -54,20 +53,26 @@ class PlayerNotificationListener: NotificationListenerService() {
         val text  = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
         val sub   = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty()
 
-
-        val token = extras?.getParcelable<android.media.session.MediaSession.Token>(
+        val token = extras.getParcelable<android.media.session.MediaSession.Token>(
             Notification.EXTRA_MEDIA_SESSION
         )
 
-        var controller: MediaController? = null
+        var art = extractArtFromNotification(notif) // fallback par défaut
+
         if (token != null) {
-            controller = MediaController(this, token)
-            val metadata = controller.metadata
+            val controller = MediaController(this, token)
+            val md = controller.metadata
             val state = controller.playbackState
 
-            val track  = metadata?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)
-            val artist = metadata?.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST)
-            val album  = metadata?.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM)
+            // essaie d'abord la MediaSession (souvent mieux/plus frais)
+            val artFromMd = extractArtFromMetadata(controller)
+            if (artFromMd.uri != null || artFromMd.bitmap != null || artFromMd.icon != null) {
+                art = artFromMd
+            }
+
+            val track  = md?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)
+            val artist = md?.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST)
+            val album  = md?.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM)
             val isPlaying = state?.state == android.media.session.PlaybackState.STATE_PLAYING
 
             NotifBus.emit(
@@ -75,9 +80,9 @@ class PlayerNotificationListener: NotificationListenerService() {
                     packageName = pkg,
                     title = track ?: title,
                     artist = artist ?: sub,
-                    album = album ?: "",
+                    album = album ?: text,
                     isPlaying = isPlaying,
-                    // artwork via METADATA_KEY_ALBUM_ART_URI si dispo
+                    artwork = art  // <-- passe l’Artwork
                 )
             )
         } else {
@@ -86,13 +91,50 @@ class PlayerNotificationListener: NotificationListenerService() {
                     packageName = pkg,
                     title = title,
                     artist = sub,
-                    album = "",
-                    isPlaying = inferIsPlayingFromStyle(notif)
+                    album = text,
+                    isPlaying = inferIsPlayingFromStyle(notif),
+                    artwork = art
                 )
             )
         }
 
-        Log.i(TAG, "Notification from $pkg: '$title' / '$text' / '$sub'")
+        Log.i(TAG, "Notification from $pkg: '$title' / '$text' / '$sub' / art=$art")
+    }
+
+    private fun extractArtFromMetadata(controller: MediaController): Artwork {
+        val md = controller.metadata ?: return Artwork()
+        // 1) URI d’abord
+        val uri = md.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART_URI)
+            ?: md.getString(android.media.MediaMetadata.METADATA_KEY_ART_URI)
+            ?: md.getString(android.media.MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)
+
+        if (!uri.isNullOrBlank()) return Artwork(uri = uri)
+
+        // 2) Bitmap sinon
+        val bmp = md.getBitmap(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: md.getBitmap(android.media.MediaMetadata.METADATA_KEY_ART)
+            ?: md.getBitmap(android.media.MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+
+        return Artwork(bitmap = bmp)
+    }
+
+    private fun extractArtFromNotification(n: Notification): Artwork {
+        val extras = n.extras
+
+        // Icon (API 23+)
+        n.getLargeIcon()?.let { icon ->
+            return Artwork(icon = icon)
+        }
+
+        // Bitmaps selon le style
+        (extras.getParcelable<android.graphics.Bitmap>(Notification.EXTRA_LARGE_ICON)
+            ?: extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG)
+            ?: extras.getParcelable(Notification.EXTRA_PICTURE)
+                )?.let { bmp ->
+                return Artwork(bitmap = bmp)
+            }
+
+        return Artwork()
     }
 
     private fun inferIsPlayingFromStyle(n: Notification): Boolean {
