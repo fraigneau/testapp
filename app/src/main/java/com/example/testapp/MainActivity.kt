@@ -18,6 +18,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.example.testapp.data.DataStoreProvider
 import com.example.testapp.data.DatabaseProvider
 import com.example.testapp.music.NowPlaying
+import com.example.testapp.MyForegroundService
 import com.example.testapp.spotify.AuthManager
 import com.example.testapp.spotify.TokenStore
 import com.example.testapp.ui.Menu
@@ -65,10 +66,12 @@ class MainActivity : ComponentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (isActive) {
                     musicVm.refreshNow()
-                    delay(1_000) // 5s; ajuste si besoin
+                    delay(1_000)
                 }
             }
         }
+
+        //startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
 
         enableEdgeToEdge()
         setContent {
