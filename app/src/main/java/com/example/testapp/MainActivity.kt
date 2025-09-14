@@ -59,6 +59,9 @@ class MainActivity : ComponentActivity() {
             trackViewModel.loadTracks()
         }
 
+        startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+
+
         authManager = AuthManager(this)
         tokenStore = TokenStore(this)
 

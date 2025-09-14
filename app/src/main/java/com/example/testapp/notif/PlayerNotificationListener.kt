@@ -1,8 +1,12 @@
 package com.example.testapp.notif
 
 import android.app.Notification
+import android.content.ContentResolver
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadata
 import android.media.session.MediaController
-import android.media.session.PlaybackState
+import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -10,79 +14,119 @@ import android.util.Log
 class PlayerNotificationListener : NotificationListenerService() {
 
     companion object {
-        private const val TAG = "NotificationListener"
-        private val INTERESTING_PACKAGES = setOf(
-            "com.spotify.music",
-            // "deezer.android.app",
-            // "com.google.android.apps.youtube.music",
-        )
+        private const val TAG = "SpotifyNotif"
+        private const val SPOTIFY_PKG = "com.spotify.music"
     }
+
+    data class SpotifyNowPlaying(
+        val title: String,
+        val album: String,
+        val artist: String,
+        val cover: Bitmap?
+    )
 
     override fun onListenerConnected() {
         Log.i(TAG, "Notification listener connected")
-        activeNotifications.forEach { sbn ->
-            handlePosted(sbn, currentRanking)
-        }
+        activeNotifications?.forEach { sbn -> handlePosted(sbn) }
     }
 
-    override fun onNotificationPosted(sbn: StatusBarNotification, rankingMap: RankingMap) {
-        handlePosted(sbn, rankingMap)
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        handlePosted(sbn)
     }
 
-    override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: RankingMap, reason: Int) {
-        if (!INTERESTING_PACKAGES.contains(sbn.packageName)) return
-        Log.i(TAG, "Notification removed from ${sbn.packageName}, reason=$reason")
-        NotifBus.emit(PlaybackUiEvent.Stopped(packageName = sbn.packageName))
-    }
+    private fun handlePosted(sbn: StatusBarNotification) {
+        if (sbn.packageName != SPOTIFY_PKG) return
 
-    private fun handlePosted(sbn: StatusBarNotification, @Suppress("UNUSED_PARAMETER") rankingMap: RankingMap?) {
-        val pkg = sbn.packageName ?: return
-        if (!INTERESTING_PACKAGES.contains(pkg)) return
-
-        val n = sbn.notification ?: return
+        val n: Notification = sbn.notification ?: return
         val extras = n.extras
 
-        val notifTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
-        val notifText  = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+        Log.i(TAG, "Notification Spotify détectée")
 
-        var title = notifTitle
-        var artist = notifText
-        var isPlaying = inferIsPlayingFromActions(n)
-        var artworkUri = ""
-
-        val token = extras.getParcelable(
-            Notification.EXTRA_MEDIA_SESSION,
-            android.media.session.MediaSession.Token::class.java
-        )
-
-
-        if (token != null) {
-            val controller = MediaController(this, token)
-            val md = controller.metadata
-            val state = controller.playbackState
-
-            title     = md?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)  ?: title
-            artist    = md?.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST) ?: artist
-            artworkUri = md?.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART_URI).orEmpty()
-
-            isPlaying = state?.state == PlaybackState.STATE_PLAYING
+        // Récupérer le token MediaSession
+        val token = if (Build.VERSION.SDK_INT >= 33) {
+            extras.getParcelable(Notification.EXTRA_MEDIA_SESSION, android.media.session.MediaSession.Token::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            extras.getParcelable(Notification.EXTRA_MEDIA_SESSION) as? android.media.session.MediaSession.Token
+        } ?: run {
+            Log.w(TAG, "⚠️ Pas de MediaSession.Token trouvé")
+            return
         }
 
-        NotifBus.emit(
-            PlaybackUiEvent.NowPlaying(
-                packageName = pkg,
-                isPlaying = isPlaying,
-                title = title,
-                artist = artist,
-                uri = artworkUri
-            )
-        )
+        val controller = MediaController(this, token)
+        val md: MediaMetadata? = controller.metadata
 
-        Log.i(TAG, "NowPlaying from $pkg: / playing=$isPlaying / title='$title' / artist='$artist' / uri=${artworkUri.takeIf { it.isNotEmpty() } ?: "<none>"}")
+        if (md == null) {
+            Log.w(TAG, "⚠️ Pas de MediaMetadata disponible")
+            return
+        }
+
+        val title  = md.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
+        val album  = md.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty()
+        val artist = md.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
+
+        Log.i(TAG, "🎵 Metadata récupérée :")
+        Log.i(TAG, "   • Titre  = '$title'")
+        Log.i(TAG, "   • Album  = '$album'")
+        Log.i(TAG, "   • Artiste= '$artist'")
+
+        val cover = fetchCoverBitmap(md, contentResolver)
+        if (cover != null) {
+            Log.i(TAG, "   • Cover  = Bitmap ${cover.width}x${cover.height}")
+        } else {
+            Log.w(TAG, "   • Cover  = null")
+        }
+
+        val now = SpotifyNowPlaying(title, album, artist, cover)
+
+        Log.i(TAG, "NowPlaying struct → $now")
     }
 
-    private fun inferIsPlayingFromActions(n: Notification): Boolean {
-        val actions = n.actions ?: return false
-        return actions.any { it.title?.toString()?.contains("pause", ignoreCase = true) == true }
+    private fun fetchCoverBitmap(md: MediaMetadata?, cr: ContentResolver): Bitmap? {
+        if (md == null) return null
+
+        // 1) Essayer les bitmaps intégrés
+        val direct = listOf(
+            MediaMetadata.METADATA_KEY_ALBUM_ART,
+            MediaMetadata.METADATA_KEY_ART,
+            MediaMetadata.METADATA_KEY_DISPLAY_ICON
+        )
+        for (k in direct) {
+            val bmp = md.getBitmap(k)
+            if (bmp != null) {
+                Log.i(TAG, "Cover trouvée via clé $k (${bmp.width}x${bmp.height})")
+                return bmp
+            }
+        }
+
+        // 2) Essayer via les URI
+        val uriKeys = listOf(
+            MediaMetadata.METADATA_KEY_ALBUM_ART_URI,
+            MediaMetadata.METADATA_KEY_ART_URI,
+            MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI,
+            "android.media.extra.ART_HTTPS_URI"
+        )
+
+        for (k in uriKeys) {
+            val uriStr = md.getString(k)
+            if (!uriStr.isNullOrBlank()) {
+                Log.i(TAG, "Tentative de fetch cover via URI $k : $uriStr")
+                runCatching {
+                    cr.openInputStream(android.net.Uri.parse(uriStr)).use { stream ->
+                        if (stream != null) {
+                            val bmp = BitmapFactory.decodeStream(stream)
+                            if (bmp != null) {
+                                Log.i(TAG, "Cover téléchargée depuis $uriStr (${bmp.width}x${bmp.height})")
+                                return bmp
+                            }
+                        }
+                    }
+                }.onFailure {
+                    Log.e(TAG, "Erreur en ouvrant $uriStr", it)
+                }
+            }
+        }
+
+        return null
     }
 }
